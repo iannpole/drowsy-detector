@@ -18,7 +18,7 @@ from sklearn.metrics import (
     f1_score,
     precision_recall_fscore_support,
 )
-from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import GroupShuffleSplit
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
@@ -63,24 +63,30 @@ def predict_threshold(frame):
 
 def build(name):
     if name == "random_forest":
-        return RandomForestClassifier(n_estimators=300, class_weight="balanced", random_state=42, n_jobs=-1)
+        return RandomForestClassifier(n_estimators=300, min_samples_leaf=5, class_weight="balanced", random_state=42, n_jobs=-1)
     if name == "svm_rbf":
         return make_pipeline(StandardScaler(), SVC(kernel="rbf", class_weight="balanced"))
     return None
 
 
-def cross_validate(name, df, n_splits):
-    predictions = np.empty(len(df), dtype=object)
-    splitter = GroupKFold(n_splits=n_splits)
-    for train_idx, test_idx in splitter.split(df, df["label"], df["subject"]):
-        train, test = df.iloc[train_idx], df.iloc[test_idx]
-        if name == "threshold":
-            predictions[test_idx] = predict_threshold(test)
-        else:
-            model = build(name)
-            model.fit(train[FEATURES], train["label"])
-            predictions[test_idx] = model.predict(test[FEATURES])
-    return predictions.astype(str)
+def split_data(df):
+    # UTA-RLDD: official train/val/test folders (no subject id in filenames).
+    # NTHU: subject-grouped shuffle split, so a held-out subject never appears in training.
+    uta = df[df["split"].isin(["train", "val", "test"])]
+    nthu = df[df["split"].isna()]
+    splitter = GroupShuffleSplit(n_splits=1, test_size=0.5, random_state=42)
+    nthu_train_idx, nthu_test_idx = next(splitter.split(nthu, nthu["label"], nthu["subject"]))
+    train = pd.concat([uta[uta["split"] != "test"], nthu.iloc[nthu_train_idx]])
+    test = pd.concat([uta[uta["split"] == "test"], nthu.iloc[nthu_test_idx]])
+    return train.copy(), test.copy()
+
+
+def evaluate(name, train, test):
+    if name == "threshold":
+        return predict_threshold(test)
+    model = build(name)
+    model.fit(train[FEATURES], train["label"])
+    return model.predict(test[FEATURES]).astype(str)
 
 
 def summarize(y_true, y_pred):
@@ -97,20 +103,20 @@ def summarize(y_true, y_pred):
 def save_confusion(name, y_true, y_pred):
     fig, ax = plt.subplots(figsize=(5, 4))
     ConfusionMatrixDisplay.from_predictions(y_true, y_pred, labels=LABELS, ax=ax, colorbar=False)
-    ax.set_title(f"{name} (subject-grouped CV)")
+    ax.set_title(f"{name} (held-out test set)")
     fig.tight_layout()
     fig.savefig(MODEL_DIR / f"cm_{name}.png", dpi=120)
     plt.close(fig)
 
 
-def write_report(df, results, n_subjects, n_splits):
+def write_report(df, train, test, results):
     lines = ["# Model comparison", ""]
-    if n_subjects < 3:
-        lines += [f"> WARNING: only {n_subjects} subject(s). Results are not reliable for generalization.", ""]
     lines += [
-        f"- Subjects: {', '.join(sorted(df['subject'].unique()))}",
-        f"- Rows: {len(df)}",
-        f"- Evaluation: GroupKFold by subject ({n_splits} folds), pooled out-of-fold predictions",
+        f"- Subjects/groups: {', '.join(sorted(df['subject'].unique()))}",
+        f"- Rows: {len(df)} (train: {len(train)}, test: {len(test)})",
+        "- Split: UTA-RLDD official folders (test = test/), NTHU GroupShuffleSplit by subject (test_size=0.5)",
+        f"- NTHU test subjects: {', '.join(sorted(test[test['split'].isna()]['subject'].unique()))}",
+        f"- Class weight: balanced (random_forest, svm_rbf)",
         f"- Thresholds (baseline): PERCLOS > {PERCLOS_THRESHOLD}, |yaw_mean| > {YAW_THRESHOLD} deg",
         "",
         "## Summary",
@@ -124,8 +130,8 @@ def write_report(df, results, n_subjects, n_splits):
             f"{summary['drowsy_precision']:.3f} | {summary['drowsy_recall']:.3f} | {summary['drowsy_f1']:.3f} |"
         )
     for name, (_, y_pred) in results.items():
-        report = classification_report(df["label"], y_pred, labels=LABELS, zero_division=0)
-        matrix = confusion_matrix(df["label"], y_pred, labels=LABELS)
+        report = classification_report(test["label"], y_pred, labels=LABELS, zero_division=0)
+        matrix = confusion_matrix(test["label"], y_pred, labels=LABELS)
         lines += ["", f"## {name}", "", "```", report, "Confusion matrix (rows=true, cols=pred):", str(matrix), "```"]
     (MODEL_DIR / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -133,30 +139,27 @@ def write_report(df, results, n_subjects, n_splits):
 def main():
     df = load_data()
     subjects = df["subject"].unique()
-    n_subjects = len(subjects)
-    if n_subjects < 2:
-        raise SystemExit("Need at least 2 subjects for subject-grouped evaluation.")
-    if n_subjects < 3:
-        print(f"WARNING: only {n_subjects} subjects. Results cannot be trusted for generalization; collect at least 3.")
-    n_splits = min(5, n_subjects)
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    train, test = split_data(df)
+    if test.empty or train.empty:
+        raise SystemExit("Train or test split is empty; check the dataset split columns.")
 
-    print(f"Subjects: {', '.join(subjects)} | rows: {len(df)} | folds: {n_splits}")
+    print(f"Groups: {', '.join(subjects)} | rows: {len(df)} | train: {len(train)} | test: {len(test)}")
     print(df["label"].value_counts().to_string())
 
     results = {}
     for name in MODEL_NAMES:
-        y_pred = cross_validate(name, df, n_splits)
-        results[name] = (summarize(df["label"], y_pred), y_pred)
-        save_confusion(name, df["label"], y_pred)
+        y_pred = evaluate(name, train, test)
+        results[name] = (summarize(test["label"], y_pred), y_pred)
+        save_confusion(name, test["label"], y_pred)
 
-    print("\nComparison (subject-grouped CV):")
+    print("\nComparison (held-out test set):")
     for name, (summary, _) in results.items():
         print(
             f"{name:14s} acc={summary['accuracy']:.3f} macroF1={summary['macro_f1']:.3f} "
             f"drowsy_recall={summary['drowsy_recall']:.3f}"
         )
-    write_report(df, results, n_subjects, n_splits)
+    write_report(df, train, test, results)
 
     rf = build("random_forest")
     rf.fit(df[FEATURES], df["label"])

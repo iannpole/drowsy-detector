@@ -1,35 +1,37 @@
 # Model comparison
 
-- Subjects: dry-a, dry-b, dry-c, real_1, real_2, real_3, real_4, real_5
-- Rows: 10036
-- Evaluation: GroupKFold by subject (5 folds), pooled out-of-fold predictions
+- Subjects/groups: nthu001, nthu002, uta
+- Rows: 19278 (train: 15377, test: 3901)
+- Split: UTA-RLDD official folders (test = test/), NTHU GroupShuffleSplit by subject (test_size=0.5)
+- NTHU test subjects: nthu002
+- Class weight: balanced (random_forest, svm_rbf)
 - Thresholds (baseline): PERCLOS > 0.2, |yaw_mean| > 20.0 deg
 
 ## Summary
 
 | Model | Accuracy | Macro-F1 | Drowsy precision | Drowsy recall | Drowsy F1 |
 |---|---|---|---|---|---|
-| threshold | 0.975 | 0.964 | 0.995 | 0.999 | 0.997 |
-| random_forest | 0.999 | 0.998 | 1.000 | 1.000 | 1.000 |
-| svm_rbf | 0.999 | 0.998 | 1.000 | 1.000 | 1.000 |
+| threshold | 0.326 | 0.295 | 0.823 | 0.395 | 0.534 |
+| random_forest | 0.774 | 0.510 | 0.734 | 0.908 | 0.812 |
+| svm_rbf | 0.762 | 0.498 | 0.713 | 0.931 | 0.808 |
 
 ## threshold
 
 ```
               precision    recall  f1-score   support
 
-       alert       0.96      1.00      0.98      6012
-      drowsy       1.00      1.00      1.00      2512
-  distracted       1.00      0.84      0.91      1512
+       alert       0.62      0.25      0.35      1806
+      drowsy       0.82      0.39      0.53      2095
+  distracted       0.00      0.00      0.00         0
 
-    accuracy                           0.98     10036
-   macro avg       0.99      0.95      0.96     10036
-weighted avg       0.98      0.98      0.97     10036
+    accuracy                           0.33      3901
+   macro avg       0.48      0.21      0.30      3901
+weighted avg       0.73      0.33      0.45      3901
 
 Confusion matrix (rows=true, cols=pred):
-[[6012    0    0]
- [   3 2509    0]
- [ 231   12 1269]]
+[[ 444  178 1184]
+ [ 272  827  996]
+ [   0    0    0]]
 ```
 
 ## random_forest
@@ -37,18 +39,18 @@ Confusion matrix (rows=true, cols=pred):
 ```
               precision    recall  f1-score   support
 
-       alert       1.00      1.00      1.00      6012
-      drowsy       1.00      1.00      1.00      2512
-  distracted       0.99      1.00      1.00      1512
+       alert       0.85      0.62      0.72      1806
+      drowsy       0.73      0.91      0.81      2095
+  distracted       0.00      0.00      0.00         0
 
-    accuracy                           1.00     10036
-   macro avg       1.00      1.00      1.00     10036
-weighted avg       1.00      1.00      1.00     10036
+    accuracy                           0.77      3901
+   macro avg       0.53      0.51      0.51      3901
+weighted avg       0.79      0.77      0.77      3901
 
 Confusion matrix (rows=true, cols=pred):
-[[6003    0    9]
- [   0 2512    0]
- [   2    0 1510]]
+[[1117  689    0]
+ [ 193 1902    0]
+ [   0    0    0]]
 ```
 
 ## svm_rbf
@@ -56,16 +58,16 @@ Confusion matrix (rows=true, cols=pred):
 ```
               precision    recall  f1-score   support
 
-       alert       1.00      1.00      1.00      6012
-      drowsy       1.00      1.00      1.00      2512
-  distracted       1.00      0.99      1.00      1512
+       alert       0.88      0.57      0.69      1806
+      drowsy       0.71      0.93      0.81      2095
+  distracted       0.00      0.00      0.00         0
 
-    accuracy                           1.00     10036
-   macro avg       1.00      1.00      1.00     10036
-weighted avg       1.00      1.00      1.00     10036
+    accuracy                           0.76      3901
+   macro avg       0.53      0.50      0.50      3901
+weighted avg       0.79      0.76      0.75      3901
 
 Confusion matrix (rows=true, cols=pred):
-[[6012    0    0]
- [   0 2512    0]
- [  15    0 1497]]
+[[1022  784    0]
+ [ 145 1950    0]
+ [   0    0    0]]
 ```

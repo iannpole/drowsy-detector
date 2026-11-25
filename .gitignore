@@ -1,0 +1,5 @@
+﻿
+# Raw image datasets (multi-GB) and extraction logs
+data/external_datasets/
+data/_extract_*.log
+data/_synthetic/

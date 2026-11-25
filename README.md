@@ -62,27 +62,19 @@ Dry run without a camera:
 
 ## External datasets
 
-Download dan integrate public datasets untuk training yang lebih robust:
+Two public image datasets are used. Download them manually (Kaggle login required) and extract them to:
+
+- `data/external_datasets/nthu/images/` from https://www.kaggle.com/datasets/ahmadrizalmustofa/nthu-multiclass (7,500 images, subjects `001`, `002`, labels from filename `*_drowsy.jpg` / `*_notdrowsy.jpg`)
+- `data/external_datasets/uta/images/` from https://www.kaggle.com/datasets/minhngt02/uta-rldd (11,787 images, `train|val|test/{active,fatigue}/`)
+
+Extract features (EAR, MAR, head pose) with MediaPipe. The output is a CSV in the pipeline format:
 
 ```powershell
-.venv\Scripts\python.exe src\download_datasets.py download
+.venv\Scripts\python.exe src\extract_features.py nthu data\external_datasets\nthu\images --out data\nthu.csv
+.venv\Scripts\python.exe src\extract_features.py uta data\external_datasets\uta\images --out data\uta.csv
 ```
 
-Dataset yang tersedia:
-- **UTA-RLDD Processed Features** (~1.7M rows): 60 subjects, 3 kelas (alert/drowsy/distracted), dari University of Texas at Arlington
-  - GitHub: https://github.com/Blueberrycheesecake069/uta-rldd-processed-features
-  - Format: CSV dengan EAR, MAR, head pose
-
-Script akan otomatis:
-1. Download dataset eksternal ke `data/external_datasets/`
-2. Konversi ke format pipeline (timestamp, subject, features, label)
-3. Merge dengan data collection lokal Anda
-
-Cek progress data:
-
-```powershell
-.venv\Scripts\python.exe src\validate_data.py
-```
+Raw images are never committed; only the extracted numeric CSVs in `data/` are.
 
 ## Training
 
@@ -90,4 +82,9 @@ Cek progress data:
 .venv\Scripts\python.exe src\train.py
 ```
 
-Training reads all `data/*.csv` dan `data/external_*.csv` files, evaluates dengan subject-grouped folds. Semakin banyak data & subject diversity = semakin akurat model.
+Training reads all `data/*.csv` files. The split is:
+
+- **UTA-RLDD**: official `train` / `val` / `test` folders. `val` is merged into training; `test` is held out.
+- **NTHU**: `GroupShuffleSplit` by subject (half of subjects held out).
+
+Imbalance is handled with `class_weight='balanced'` for Random Forest and SVM. Results are written to `models/report.md`. Restart Uvicorn after retraining.

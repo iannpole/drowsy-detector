@@ -72,7 +72,12 @@ def head_pose(landmarks, w, h):
         return 0.0, 0.0, 0.0
     rotation_matrix, _ = cv2.Rodrigues(rotation_vector)
     angles = cv2.RQDecomp3x3(rotation_matrix)[0]
-    return float(angles[0]), float(angles[1]), float(angles[2])
+    pitch = float(angles[0])
+    if pitch > 90:
+        pitch -= 180.0
+    elif pitch < -90:
+        pitch += 180.0
+    return pitch, float(angles[1]), float(angles[2])
 
 
 class WindowFeatures:
